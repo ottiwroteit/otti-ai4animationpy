@@ -15,8 +15,9 @@ class ApocalypseCity(Component):
 
         self.SkyUpper = pr.Color(50, 78, 88, 255)
         self.SkyMid = pr.Color(114, 119, 103, 255)
-        self.SkyHorizon = pr.Color(164, 132, 74, 255)
-        self.SunHaze = pr.Color(216, 156, 62, 72)
+        self.SkyHorizon = pr.Color(134, 143, 133, 255)
+        self.CloudLight = pr.Color(205, 209, 196, 165)
+        self.CloudShadow = pr.Color(93, 105, 101, 130)
         self.Ground = pr.Color(103, 105, 82, 255)
         self.Street = pr.Color(57, 60, 56, 255)
         self.StreetPatch = pr.Color(45, 47, 43, 255)
@@ -149,14 +150,22 @@ class ApocalypseCity(Component):
 
     def DrawSky(self):
         for z, width in [(-44.0, 70.0), (-68.0, 98.0), (-86.0, 124.0)]:
-            rl.DrawCube(pr.Vector3(0.0, 15.0, z), width, 16.0, 0.08, self.SkyUpper)
-            rl.DrawCube(pr.Vector3(0.0, 7.4, z + 0.04), width, 6.4, 0.08, self.SkyMid)
-            rl.DrawCube(pr.Vector3(0.0, 2.2, z + 0.08), width, 3.6, 0.08, self.SkyHorizon)
+            rl.DrawCube(pr.Vector3(0.0, 16.6, z), width, 12.8, 0.08, self.SkyUpper)
 
-        rl.DrawCube(pr.Vector3(-11.0, 4.4, -43.8), 32.0, 5.4, 0.06, self.SunHaze)
-        rl.DrawCube(pr.Vector3(-24.0, 8.7, -43.7), 24.0, 0.55, 0.05, pr.Color(99, 107, 99, 140))
-        rl.DrawCube(pr.Vector3(18.0, 10.2, -43.7), 30.0, 0.48, 0.05, pr.Color(87, 97, 94, 130))
-        rl.DrawCube(pr.Vector3(4.0, 6.0, -43.7), 46.0, 0.38, 0.05, pr.Color(187, 151, 80, 125))
+        self.DrawCloud(-24.0, 9.0, -43.7, 18.0, 0.42)
+        self.DrawCloud(16.0, 10.3, -43.7, 24.0, 0.38)
+        self.DrawCloud(4.0, 6.4, -43.7, 30.0, 0.32)
+        self.DrawCloud(-12.0, 12.0, -67.7, 32.0, 0.36)
+
+    def DrawCloud(self, x, y, z, width, height):
+        rl.DrawCube(pr.Vector3(x, y, z), width, height, 0.05, self.CloudLight)
+        rl.DrawCube(
+            pr.Vector3(x + width * 0.12, y - height * 0.55, z + 0.02),
+            width * 0.72,
+            height * 0.45,
+            0.05,
+            self.CloudShadow,
+        )
 
     def DrawGround(self):
         rl.DrawPlane(pr.Vector3(0.0, -0.035, 0.0), pr.Vector2(88.0, 148.0), self.Ground)
