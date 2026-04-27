@@ -148,13 +148,15 @@ class ApocalypseCity(Component):
         self.DrawAtmosphere()
 
     def DrawSky(self):
-        rl.DrawCube(pr.Vector3(0.0, 17.0, -78.0), 118.0, 18.0, 0.08, self.SkyUpper)
-        rl.DrawCube(pr.Vector3(0.0, 8.4, -77.9), 118.0, 7.0, 0.08, self.SkyMid)
-        rl.DrawCube(pr.Vector3(0.0, 3.3, -77.8), 118.0, 4.5, 0.08, self.SkyHorizon)
-        rl.DrawCube(pr.Vector3(-11.0, 5.8, -77.7), 34.0, 7.5, 0.06, self.SunHaze)
-        rl.DrawCube(pr.Vector3(-24.0, 10.4, -77.6), 24.0, 0.55, 0.05, pr.Color(99, 107, 99, 120))
-        rl.DrawCube(pr.Vector3(18.0, 12.2, -77.6), 30.0, 0.48, 0.05, pr.Color(87, 97, 94, 105))
-        rl.DrawCube(pr.Vector3(4.0, 7.3, -77.6), 46.0, 0.38, 0.05, pr.Color(187, 151, 80, 118))
+        for z, width in [(-44.0, 70.0), (-68.0, 98.0), (-86.0, 124.0)]:
+            rl.DrawCube(pr.Vector3(0.0, 15.0, z), width, 16.0, 0.08, self.SkyUpper)
+            rl.DrawCube(pr.Vector3(0.0, 7.4, z + 0.04), width, 6.4, 0.08, self.SkyMid)
+            rl.DrawCube(pr.Vector3(0.0, 2.2, z + 0.08), width, 3.6, 0.08, self.SkyHorizon)
+
+        rl.DrawCube(pr.Vector3(-11.0, 4.4, -43.8), 32.0, 5.4, 0.06, self.SunHaze)
+        rl.DrawCube(pr.Vector3(-24.0, 8.7, -43.7), 24.0, 0.55, 0.05, pr.Color(99, 107, 99, 140))
+        rl.DrawCube(pr.Vector3(18.0, 10.2, -43.7), 30.0, 0.48, 0.05, pr.Color(87, 97, 94, 130))
+        rl.DrawCube(pr.Vector3(4.0, 6.0, -43.7), 46.0, 0.38, 0.05, pr.Color(187, 151, 80, 125))
 
     def DrawGround(self):
         rl.DrawPlane(pr.Vector3(0.0, -0.035, 0.0), pr.Vector2(88.0, 148.0), self.Ground)
