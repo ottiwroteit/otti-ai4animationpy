@@ -39,6 +39,13 @@ class Standalone:
             "ApocalypseCity"
         ).AddComponent(self.LoadModule("ApocalypseCity").ApocalypseCity)
 
+        self.CityInteraction = AI4Animation.Scene.AddEntity(
+            "CityInteraction"
+        ).AddComponent(
+            self.LoadModule("CityInteraction").CityInteraction,
+            self.CityBackdrop,
+        )
+
         self.VideoRecorder = AI4Animation.Scene.AddEntity(
             "Screen Recorder"
         ).AddComponent(self.LoadModule("VideoRecorder").VideoRecorder)

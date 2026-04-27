@@ -283,6 +283,7 @@ class Program:
             sit_requested = AI4Animation.Standalone.IO.IsR1Down()
             stand_requested = AI4Animation.Standalone.IO.IsL1Down()
             lie_requested = AI4Animation.Standalone.IO.IsL2Down()
+            interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
         else:
             keyboard_move = AI4Animation.Standalone.IO.GetWASDQE()
             move_axes = [keyboard_move[0], keyboard_move[2]]
@@ -295,6 +296,13 @@ class Program:
             sit_requested = rl.IsKeyDown(rl.KEY_R)
             stand_requested = rl.IsKeyDown(rl.KEY_T)
             lie_requested = rl.IsKeyDown(rl.KEY_V)
+            interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
+
+        if hasattr(AI4Animation.Standalone, "CityInteraction"):
+            push_active = AI4Animation.Standalone.CityInteraction.InteractWithActor(
+                self.Actor, interact_pressed
+            )
+            stand_requested = stand_requested or push_active
 
         can_trigger_action_pose = current_speed < ACTION_TRIGGER_SPEED_MAX
         sit_active = can_trigger_action_pose and sit_requested

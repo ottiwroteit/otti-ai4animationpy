@@ -32,6 +32,7 @@ class ApocalypseCity(Component):
         self.Haze = pr.Color(220, 181, 86, 42)
 
         self.Buildings, self.CrossStreets = self.CreateBuildings()
+        self.Doors = self.CreateDoorSpecs()
         self.Skyline = self.CreateSkyline()
         self.Cars = self.CreateCars()
         self.Grass = self.CreateGrass()
@@ -82,6 +83,27 @@ class ApocalypseCity(Component):
                 block += 1
 
         return specs, cross_streets
+
+    def CreateDoorSpecs(self):
+        doors = []
+        for index, (side, x, _y, z, width, _height, depth, _color, _roof) in enumerate(self.Buildings):
+            face_x = x - side * (width / 2.0 + 0.035)
+            door_z = z + (((index * 5) % 5) - 2) * min(0.32, depth * 0.08)
+            doors.append(
+                {
+                    "index": index,
+                    "side": side,
+                    "face_x": face_x,
+                    "z": door_z,
+                    "depth": depth,
+                    "style": index % 4,
+                    "interact": (face_x - side * 1.05, 0.0, door_z),
+                }
+            )
+        return doors
+
+    def GetDoorSpecs(self):
+        return self.Doors
 
     def CreateSkyline(self):
         specs = []
