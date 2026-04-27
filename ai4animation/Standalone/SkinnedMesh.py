@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 from array import array
 from io import BytesIO
+from sys import platform
 
 import cffi
 import numpy as np
@@ -10,12 +11,14 @@ from pyray import Matrix, Mesh, load_model_from_mesh
 from raylib import (
     LoadImageFromMemory,
     LoadTextureFromImage,
+    LIGHTGRAY,
     MATERIAL_MAP_DIFFUSE,
     MatrixIdentity,
     MemAlloc,
     RAYWHITE,
     SetMaterialTexture,
     UnloadImage,
+    UpdateMeshBuffer,
     UploadMesh,
     WHITE,
 )
@@ -53,8 +56,19 @@ class SkinnedMesh:
 
         self.Models = []
         self.BoneMatrixViews = []
+        self.MeshBuffers = []
+        self.CpuSkinningMeshes = []
+        self.UseCpuSkinning = platform == "darwin"
         self.Textures = []
-        self.Color = RAYWHITE
+        self.Color = (
+            LIGHTGRAY
+            if all(
+                getattr(mesh, "Image", None) is None
+                or getattr(mesh.Image, "size", None) == (1, 1)
+                for mesh in self.SkinnedMeshes
+            )
+            else RAYWHITE
+        )
 
         print(
             f"Loading {len(self.SkinnedMeshes)} skinned meshes (skipping {len(model.Meshes) - len(self.SkinnedMeshes)} non-skinned meshes)"
@@ -77,6 +91,7 @@ class SkinnedMesh:
             vertices = array("f", mesh.Vertices.flatten())
             normals = array("f", mesh.Normals.flatten())
             triangles = array("H", mesh.Triangles.flatten().astype(np.uint16))
+            colors = array("B", [255, 255, 255, 255] * vertexCount)
             if getattr(mesh, "TexCoords", None) is not None and len(mesh.TexCoords) == vertexCount:
                 texcoords = array("f", np.asarray(mesh.TexCoords, dtype=np.float32).flatten())
             else:
@@ -101,6 +116,7 @@ class SkinnedMesh:
             raylib_mesh.vertices = ffi.cast("float*", vertices.buffer_info()[0])
             raylib_mesh.texcoords = ffi.cast("float*", texcoords.buffer_info()[0])
             raylib_mesh.normals = ffi.cast("float*", normals.buffer_info()[0])
+            raylib_mesh.colors = ffi.cast("unsigned char*", colors.buffer_info()[0])
             raylib_mesh.indices = ffi.cast(
                 "unsigned short*", triangles.buffer_info()[0]
             )
@@ -116,6 +132,9 @@ class SkinnedMesh:
 
             # Upload mesh with dynamic flag for bone updates
             UploadMesh(ffi.addressof(raylib_mesh), True)
+            self.MeshBuffers.append(
+                (vertices, texcoords, normals, colors, triangles, bone_ids, bone_weights)
+            )
 
             # Create Model for this mesh
             raylib_model = load_model_from_mesh(raylib_mesh)
@@ -139,6 +158,23 @@ class SkinnedMesh:
                 dtype=np.float32,
             ).reshape(gpu_mesh.boneCount, 4, 4)
             self.BoneMatrixViews.append(matView)
+            self.CpuSkinningMeshes.append(
+                {
+                    "mesh": gpu_mesh,
+                    "vertexPositions": np.concatenate(
+                        (
+                            np.asarray(mesh.Vertices, dtype=np.float32),
+                            np.ones((vertexCount, 1), dtype=np.float32),
+                        ),
+                        axis=1,
+                    ),
+                    "normals": np.asarray(mesh.Normals, dtype=np.float32),
+                    "boneIds": boneIds,
+                    "boneWeights": boneWeights,
+                    "skinnedVertices": np.empty((vertexCount, 3), dtype=np.float32),
+                    "skinnedNormals": np.empty((vertexCount, 3), dtype=np.float32),
+                }
+            )
 
         print(
             f"Initialized {len(self.Models)} skinned submeshes with {boneCount} bones"
@@ -181,3 +217,58 @@ class SkinnedMesh:
         )
         for matView in self.BoneMatrixViews:
             matView[:] = transforms
+
+        if self.UseCpuSkinning:
+            self.UpdateCpuSkinnedMeshes(transforms)
+
+    def UpdateCpuSkinnedMeshes(self, transforms):
+        for mesh_data in self.CpuSkinningMeshes:
+            bone_ids = mesh_data["boneIds"]
+            bone_weights = mesh_data["boneWeights"]
+            vertex_positions = mesh_data["vertexPositions"]
+            normals = mesh_data["normals"]
+
+            skinned_vertices = mesh_data["skinnedVertices"]
+            skinned_normals = mesh_data["skinnedNormals"]
+            skinned_vertices.fill(0.0)
+            skinned_normals.fill(0.0)
+
+            for i in range(4):
+                weights = bone_weights[:, i : i + 1]
+                active = weights[:, 0] > 0.0
+                if not np.any(active):
+                    continue
+
+                matrices = transforms[bone_ids[active, i]]
+                skinned_vertices[active] += (
+                    np.einsum("nij,nj->ni", matrices, vertex_positions[active])[:, :3]
+                    * weights[active]
+                )
+                skinned_normals[active] += (
+                    np.einsum("nij,nj->ni", matrices[:, :3, :3], normals[active])
+                    * weights[active]
+                )
+
+            lengths = np.linalg.norm(skinned_normals, axis=1, keepdims=True)
+            np.divide(
+                skinned_normals,
+                lengths,
+                out=skinned_normals,
+                where=lengths > 1e-6,
+            )
+
+            raylib_mesh = mesh_data["mesh"]
+            UpdateMeshBuffer(
+                raylib_mesh,
+                0,
+                ffi.from_buffer("float[]", skinned_vertices),
+                skinned_vertices.nbytes,
+                0,
+            )
+            UpdateMeshBuffer(
+                raylib_mesh,
+                2,
+                ffi.from_buffer("float[]", skinned_normals),
+                skinned_normals.nbytes,
+                0,
+            )

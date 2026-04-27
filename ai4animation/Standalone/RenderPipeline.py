@@ -1,6 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 import os
 import re
+from os import environ
 from dataclasses import dataclass
 from sys import platform
 from typing import Any
@@ -18,6 +19,7 @@ from raylib import (
     ClearBackground,
     DEG2RAD,
     DrawModelEx,
+    DrawModelWiresEx,
     DrawTextureRec,
     EndMode3D,
     EndShaderMode,
@@ -25,6 +27,7 @@ from raylib import (
     GetScreenHeight,
     GetScreenWidth,
     GetShaderLocation,
+    LoadMaterialDefault,
     LoadRenderTexture,
     LoadShader as LoadShaderFromFile,
     LoadShaderFromMemory,
@@ -35,6 +38,7 @@ from raylib import (
     PIXELFORMAT_UNCOMPRESSED_R16G16B16A16,
     PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
     RAYWHITE,
+    RED,
     RL_ATTACHMENT_COLOR_CHANNEL0,
     RL_ATTACHMENT_COLOR_CHANNEL1,
     RL_ATTACHMENT_DEPTH,
@@ -44,10 +48,12 @@ from raylib import (
     rlActiveDrawBuffers,
     rlActiveTextureSlot,
     rlDisableColorBlend,
+    rlDisableBackfaceCulling,
     rlDisableDepthTest,
     rlDisableFramebuffer,
     rlDrawRenderBatchActive,
     rlEnableColorBlend,
+    rlEnableBackfaceCulling,
     rlEnableDepthTest,
     rlEnableFramebuffer,
     rlEnableShader,
@@ -140,6 +146,8 @@ class RegisteredModel:
 
     def Draw(self, shader):
         if isinstance(self.model, list):
+            if self.skinned_mesh:
+                rlDisableBackfaceCulling()
             for m in self.model:
                 for i in range(m.materialCount):
                     m.materials[i].shader = shader
@@ -151,7 +159,11 @@ class RegisteredModel:
                     self.scale,
                     self.color,
                 )
+            if self.skinned_mesh:
+                rlEnableBackfaceCulling()
         else:
+            if self.skinned_mesh:
+                rlDisableBackfaceCulling()
             for i in range(self.model.materialCount):
                 self.model.materials[i].shader = shader
             DrawModelEx(
@@ -162,6 +174,38 @@ class RegisteredModel:
                 self.scale,
                 self.color,
             )
+            if self.skinned_mesh:
+                rlEnableBackfaceCulling()
+
+    def DrawWires(self):
+        models = self.model if isinstance(self.model, list) else [self.model]
+        for m in models:
+            DrawModelWiresEx(
+                m,
+                self.position,
+                self.rotationAxis,
+                self.rotationAngle,
+                self.scale,
+                RED,
+            )
+
+    def DrawDirect(self, shader):
+        models = self.model if isinstance(self.model, list) else [self.model]
+        if self.skinned_mesh:
+            rlDisableBackfaceCulling()
+        for m in models:
+            for i in range(m.materialCount):
+                m.materials[i].shader = shader
+            DrawModelEx(
+                m,
+                self.position,
+                self.rotationAxis,
+                self.rotationAngle,
+                self.scale,
+                self.color,
+            )
+        if self.skinned_mesh:
+            rlEnableBackfaceCulling()
 
 
 class RenderPipeline(Component):
@@ -175,6 +219,7 @@ class RenderPipeline(Component):
         self.ScreenHeight = 0
 
         self.LoadShaders()
+        self.DirectMaterial = LoadMaterialDefault()
 
         self.LightDir = Vector3Normalize(Vector3(0.35, -1.0, -0.35))
         self.SunColor = Vector3(253.0 / 255.0, 255.0 / 255.0, 232.0 / 255.0)
@@ -310,6 +355,7 @@ class RenderPipeline(Component):
             registered.Draw(
                 self.SkinnedShadowShader
                 if registered.skinned_mesh
+                and not registered.skinned_mesh.UseCpuSkinning
                 else self.ShadowShader
             )
         EndShadowMap()
@@ -398,9 +444,15 @@ class RenderPipeline(Component):
             SHADER_UNIFORM_FLOAT,
         )
         for registered in self.RegisteredModels:
-            registered.Draw(
-                self.SkinnedBasicShader if registered.skinned_mesh else self.GridShader
-            )
+            if registered.skinned_mesh:
+                shader = (
+                    self.BasicShader
+                    if registered.skinned_mesh.UseCpuSkinning
+                    else self.SkinnedBasicShader
+                )
+            else:
+                shader = self.GridShader
+            registered.Draw(shader)
         EndGBuffer(self.ScreenWidth, self.ScreenHeight)
 
     def RenderSSAOShadows(self):
@@ -674,6 +726,16 @@ class RenderPipeline(Component):
         rlEnableColorBlend()
         BeginMode3D(self.Camera)
         debug()
+        for registered in self.RegisteredModels:
+            if (
+                registered.skinned_mesh
+                and registered.skinned_mesh.UseCpuSkinning
+            ):
+                registered.DrawDirect(self.DirectMaterial.shader)
+        if environ.get("AI4ANIMATION_SKINNED_WIREFRAME") == "1":
+            for registered in self.RegisteredModels:
+                if registered.skinned_mesh:
+                    registered.DrawWires()
         EndMode3D()
         rlDisableColorBlend()
         EndTextureMode()

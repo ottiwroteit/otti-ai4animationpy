@@ -35,18 +35,9 @@ class Standalone:
             self.LoadModule("Grid").Grid, 25, 10, self.RenderPipeline, None, None
         )
 
-        self.Wall1 = AI4Animation.Scene.AddEntity(
-            "Wall1", Vector3.Create(0.0, 12.5, -12.5), Rotation.Euler(90.0, 0.0, 0.0)
-        ).AddComponent(self.LoadModule("Grid").Grid, 25, 10, self.RenderPipeline)
-        self.Wall2 = AI4Animation.Scene.AddEntity(
-            "Wall2", Vector3.Create(-12.5, 12.5, 0.0), Rotation.Euler(90.0, 90.0, 0.0)
-        ).AddComponent(self.LoadModule("Grid").Grid, 25, 10, self.RenderPipeline)
-        self.Wall3 = AI4Animation.Scene.AddEntity(
-            "Wall3", Vector3.Create(12.5, 12.5, 0.0), Rotation.Euler(90.0, -90.0, 0.0)
-        ).AddComponent(self.LoadModule("Grid").Grid, 25, 10, self.RenderPipeline)
-        self.Wall4 = AI4Animation.Scene.AddEntity(
-            "Wall4", Vector3.Create(0.0, 12.5, 12.5), Rotation.Euler(90.0, 180.0, 0.0)
-        ).AddComponent(self.LoadModule("Grid").Grid, 25, 10, self.RenderPipeline)
+        self.CityBackdrop = AI4Animation.Scene.AddEntity(
+            "ApocalypseCity"
+        ).AddComponent(self.LoadModule("ApocalypseCity").ApocalypseCity)
 
         self.VideoRecorder = AI4Animation.Scene.AddEntity(
             "Screen Recorder"

@@ -29,13 +29,14 @@ float LinearDepth(float depth, float near, float far)
 void main()
 {
     vec4 texel = texture(texture0, fragTexCoord);
-    float alpha = texel.a * fragColor.a * colDiffuse.a;
+    vec4 vertexTint = fragColor.a > 0.0 ? fragColor : vec4(1.0);
+    float alpha = texel.a * vertexTint.a * colDiffuse.a;
     if (alpha < 0.2)
     {
         discard;
     }
 
-    vec3 albedo = FromGamma(texel.xyz * fragColor.xyz * colDiffuse.xyz);
+    vec3 albedo = FromGamma(texel.xyz * vertexTint.xyz * colDiffuse.xyz);
     float spec = specularity;
 
     gbufferColor = vec4(albedo, spec);
