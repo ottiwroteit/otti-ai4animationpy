@@ -57,7 +57,7 @@ class Program:
         AI4Animation.Standalone.Camera.SetTarget(self.Actor.Entity)
 
         local_path = os.path.join(SCRIPT_DIR, "Network.pt")
-        self.Model = torch.load(local_path, weights_only=False)
+        self.Model = torch.load(local_path, map_location=torch.device("cpu"), weights_only=False)
 
         self.Model.eval()
 
