@@ -382,7 +382,7 @@ class Actor(Component):
             "Show Root", 0.05, 0.15, 0.9, 0.125, False, True, self.Canvas
         )
         self.Button_Skeleton = AI4Animation.GUI.Button(
-            "Show Skeleton", 0.05, 0.3, 0.9, 0.125, False, True, self.Canvas
+            "Show Skeleton", 0.05, 0.3, 0.9, 0.125, True, True, self.Canvas
         )
         self.Button_Velocities = AI4Animation.GUI.Button(
             "Show Velocities", 0.05, 0.45, 0.9, 0.125, False, True, self.Canvas

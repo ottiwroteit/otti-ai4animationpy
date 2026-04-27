@@ -19,6 +19,7 @@ class Standalone:
         AI4Animation.Color = self.Color
         rl.SetConfigFlags(rl.FLAG_MSAA_4X_HINT | rl.FLAG_WINDOW_RESIZABLE)
         rl.InitWindow(1920, 1080, Utility.ToBytes("AI4AnimationPy"))
+        rl.SetWindowPosition(60, 80)
         self.Camera = AI4Animation.Scene.AddEntity("Camera").AddComponent(
             self.LoadModule("Camera").Camera
         )
