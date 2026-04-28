@@ -51,6 +51,8 @@ CONTACT_POWER = 3.0
 CONTACT_THRESHOLD = 2.0 / 3.0
 INPUT_DEADZONE = 0.25
 ACTION_TRIGGER_SPEED_MAX = 0.5
+JUMP_ACTION_DURATION = 0.85
+JUMP_MIN_SPEED = 1.0
 
 LOCOMOTION_MODES = {
     "walk": 0.7,
@@ -205,6 +207,7 @@ class Program:
         self.ConfigureActorBindings()
 
         self.Timestamp = Time.TotalTime
+        self.JumpTimer = 0.0
 
         AI4Animation.Standalone.IO.LogErrorIfGamepadNotAvailable()
 
@@ -284,6 +287,7 @@ class Program:
             stand_requested = AI4Animation.Standalone.IO.IsL1Down()
             lie_requested = AI4Animation.Standalone.IO.IsL2Down()
             interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
+            jump_pressed = AI4Animation.Standalone.IO.IsJumpPressed()
         else:
             keyboard_move = AI4Animation.Standalone.IO.GetWASDQE()
             move_axes = [keyboard_move[0], keyboard_move[2]]
@@ -297,12 +301,18 @@ class Program:
             stand_requested = rl.IsKeyDown(rl.KEY_T)
             lie_requested = rl.IsKeyDown(rl.KEY_V)
             interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
+            jump_pressed = AI4Animation.Standalone.IO.IsJumpPressed()
 
         if hasattr(AI4Animation.Standalone, "CityInteraction"):
             push_active = AI4Animation.Standalone.CityInteraction.InteractWithActor(
                 self.Actor, interact_pressed
             )
             stand_requested = stand_requested or push_active
+
+        if jump_pressed:
+            self.JumpTimer = JUMP_ACTION_DURATION
+        jump_active = self.JumpTimer > 0.0
+        self.JumpTimer = max(0.0, self.JumpTimer - Time.DeltaTime)
 
         can_trigger_action_pose = current_speed < ACTION_TRIGGER_SPEED_MAX
         sit_active = can_trigger_action_pose and sit_requested
@@ -334,6 +344,11 @@ class Program:
             speed = 0.0
             velocity = Vector3.Zero()
             direction = self.Actor.GetRootDirection()
+        elif jump_active:
+            move_direction = self.Actor.GetRootDirection() if move_vector_length == 0.0 else move_direction
+            speed = max(speed, JUMP_MIN_SPEED)
+            velocity = speed * move_direction
+            direction = move_direction
         else:
             velocity = speed * move_direction
             direction = velocity
@@ -355,7 +370,9 @@ class Program:
         )
 
         speed = Vector3.Length(velocity)
-        if sit_active:
+        if jump_active:
+            guidance_state = "Jump"
+        elif sit_active:
             guidance_state = "Sit"
         elif lie_active:
             guidance_state = "Lie"
