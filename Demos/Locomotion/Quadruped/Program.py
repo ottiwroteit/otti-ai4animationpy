@@ -65,6 +65,8 @@ CHARACTER_MODELS = {
     "dog": "Dog.glb",
     "wolf": "Wolf.glb",
 }
+PLAYABLE_CHARACTERS = {"dog"}
+VILLAIN_CHARACTERS = {"wolf"}
 
 class Program:
     def __init__(self):
@@ -128,7 +130,11 @@ class Program:
 
     def SwitchCharacter(self, character):
         character = character.lower()
-        if character == self.Character or character not in self.Actors:
+        if (
+            character == self.Character
+            or character not in self.Actors
+            or character not in PLAYABLE_CHARACTERS
+        ):
             return
 
         previous_actor = self.Actor
@@ -620,7 +626,7 @@ class Program:
             canvas=self.CharacterCanvas,
         )
         self.ButtonWolf = AI4Animation.GUI.Button(
-            "Wolf",
+            "Wolf Enemy",
             0.25,
             0.6,
             0.42,
@@ -663,13 +669,11 @@ class Program:
 
     def GUI(self):
         self.ButtonDog.Active = self.Character == "dog"
-        self.ButtonWolf.Active = self.Character == "wolf"
+        self.ButtonWolf.Active = False
         self.CharacterCanvas.GUI()
 
         if self.ButtonDog.IsPressed():
             self.SwitchCharacter("dog")
-        if self.ButtonWolf.IsPressed():
-            self.SwitchCharacter("wolf")
 
         if AI4Animation.Standalone.IO.GamepadAvailable():
             AI4Animation.Standalone.IO.DrawController(x=0.50, y=0.90, scale=0.4)
