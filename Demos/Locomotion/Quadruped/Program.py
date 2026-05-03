@@ -7,6 +7,7 @@ import torch
 import os
 import sys
 import numpy as np
+import pyray as pr
 import raylib as rl
 
 from pathlib import Path
@@ -53,6 +54,11 @@ INPUT_DEADZONE = 0.25
 ACTION_TRIGGER_SPEED_MAX = 0.5
 JUMP_ACTION_DURATION = 0.85
 JUMP_MIN_SPEED = 1.0
+FIGHT_ACTION_DURATION = 0.55
+FIGHT_LUNGE_SPEED = 1.25
+FIGHT_RANGE = 2.85
+FIGHT_DAMAGE = 1
+WOLF_MAX_HEALTH = 3
 
 LOCOMOTION_MODES = {
     "walk": 0.7,
@@ -101,9 +107,15 @@ class Program:
             )
         target.SyncToScene()
 
+    def PlaceActorAtRoot(self, actor, root):
+        offset = Transform.GetPosition(root) - actor.GetRootPosition()
+        actor.SetRoot(root)
+        actor.SetPositions(actor.GetPositions() + offset)
+        actor.SyncToScene()
+
     def SyncInactiveActors(self):
         for name, actor in self.Actors.items():
-            if actor is not self.Actor:
+            if actor is not self.Actor and name not in VILLAIN_CHARACTERS:
                 self.CopyActorState(self.Actor, actor)
 
     def ConfigureActorBindings(self):
@@ -214,8 +226,68 @@ class Program:
 
         self.Timestamp = Time.TotalTime
         self.JumpTimer = 0.0
+        self.FightTimer = 0.0
+        self.EnemyWolf = self.Actors["wolf"]
+        self.EnemyWolfHealth = WOLF_MAX_HEALTH
+        self.EnemyWolfDefeated = False
+        self.SpawnEnemyWolf()
 
         AI4Animation.Standalone.IO.LogErrorIfGamepadNotAvailable()
+
+    def SpawnEnemyWolf(self):
+        self.CopyActorState(self.Actor, self.EnemyWolf)
+        self.PlaceActorAtRoot(
+            self.EnemyWolf,
+            Transform.TR(
+                Vector3.Create(1.35, 0.0, -2.2),
+                Rotation.RotationY(np.array(180.0, dtype=np.float32)),
+            ),
+        )
+        self.EnemyWolf.SkinnedMesh.Register()
+
+    def DrawEnemyWolfMarker(self):
+        if self.EnemyWolfDefeated:
+            return
+
+        position = self.EnemyWolf.GetRootPosition()
+        x = float(position[0])
+        z = float(position[2])
+        rl.DrawCube(
+            pr.Vector3(x, 0.035, z),
+            0.55,
+            0.05,
+            0.55,
+            pr.Color(170, 22, 30, 110),
+        )
+        rl.DrawSphere(
+            pr.Vector3(x, 1.75, z),
+            0.055,
+            pr.Color(220, 36, 44, 255),
+        )
+
+    def TryFightWolf(self):
+        self.FightTimer = FIGHT_ACTION_DURATION
+        if self.EnemyWolfDefeated:
+            return
+        distance = Vector3.Distance(
+            self.Actor.GetRootPosition(),
+            self.EnemyWolf.GetRootPosition(),
+        )
+        if distance > FIGHT_RANGE:
+            return
+        self.EnemyWolfHealth = max(0, self.EnemyWolfHealth - FIGHT_DAMAGE)
+        if self.EnemyWolfHealth == 0:
+            self.EnemyWolfDefeated = True
+            self.EnemyWolf.SkinnedMesh.Unregister()
+
+    def DirectionToEnemyWolf(self):
+        if self.EnemyWolfDefeated:
+            return self.Actor.GetRootDirection()
+        direction = self.EnemyWolf.GetRootPosition() - self.Actor.GetRootPosition()
+        direction[1] = 0.0
+        if Vector3.Length(direction) == 0.0:
+            return self.Actor.GetRootDirection()
+        return Vector3.Normalize(direction)
 
     def CameraRelativeInput(self, x, y):
         forward = (
@@ -294,6 +366,7 @@ class Program:
             lie_requested = AI4Animation.Standalone.IO.IsL2Down()
             interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
             jump_pressed = AI4Animation.Standalone.IO.IsJumpPressed()
+            fight_pressed = AI4Animation.Standalone.IO.IsFightPressed()
         else:
             keyboard_move = AI4Animation.Standalone.IO.GetWASDQE()
             move_axes = [keyboard_move[0], keyboard_move[2]]
@@ -308,6 +381,7 @@ class Program:
             lie_requested = rl.IsKeyDown(rl.KEY_V)
             interact_pressed = AI4Animation.Standalone.IO.IsInteractPressed()
             jump_pressed = AI4Animation.Standalone.IO.IsJumpPressed()
+            fight_pressed = AI4Animation.Standalone.IO.IsFightPressed()
 
         if hasattr(AI4Animation.Standalone, "CityInteraction"):
             push_active = AI4Animation.Standalone.CityInteraction.InteractWithActor(
@@ -319,6 +393,11 @@ class Program:
             self.JumpTimer = JUMP_ACTION_DURATION
         jump_active = self.JumpTimer > 0.0
         self.JumpTimer = max(0.0, self.JumpTimer - Time.DeltaTime)
+
+        if fight_pressed:
+            self.TryFightWolf()
+        fight_active = self.FightTimer > 0.0
+        self.FightTimer = max(0.0, self.FightTimer - Time.DeltaTime)
 
         can_trigger_action_pose = current_speed < ACTION_TRIGGER_SPEED_MAX
         sit_active = can_trigger_action_pose and sit_requested
@@ -355,6 +434,10 @@ class Program:
             speed = max(speed, JUMP_MIN_SPEED)
             velocity = speed * move_direction
             direction = move_direction
+        elif fight_active:
+            direction = self.DirectionToEnemyWolf()
+            speed = max(speed, FIGHT_LUNGE_SPEED)
+            velocity = speed * direction
         else:
             velocity = speed * move_direction
             direction = velocity
@@ -376,7 +459,9 @@ class Program:
         )
 
         speed = Vector3.Length(velocity)
-        if jump_active:
+        if fight_active:
+            guidance_state = "Jump"
+        elif jump_active:
             guidance_state = "Jump"
         elif sit_active:
             guidance_state = "Sit"
@@ -657,6 +742,7 @@ class Program:
 
     def Draw(self):
         self.SimulationObject.Draw()
+        self.DrawEnemyWolfMarker()
 
         if self.DrawRootControl.Active:
             self.RootControl.Draw()
@@ -678,7 +764,7 @@ class Program:
         if AI4Animation.Standalone.IO.GamepadAvailable():
             AI4Animation.Standalone.IO.DrawController(x=0.50, y=0.90, scale=0.4)
             AI4Animation.Draw.Text(
-                "Left Stick: Move\nL1: Stand\nL2: Lie\nR1: Sit\nLeft Stick Pressed: Sprint",
+                "Left Stick: Move\nL1: Stand\nL2: Lie\nR1: Sit\nX: Jump\nCircle: Fight\nSquare: Open\nLeft Stick Pressed: Sprint",
                 0.35,
                 0.88,
                 0.02,
@@ -701,9 +787,9 @@ class Program:
                 AI4Animation.Color.BLACK,
             )
             AI4Animation.Draw.Text(
-                "R: Sit\nT: Stand\nV: Lie",
+                "R: Sit\nT: Stand\nV: Lie\nSpace: Jump\nF: Open\nG: Fight",
                 0.62,
-                0.90,
+                0.86,
                 0.02,
                 AI4Animation.Color.BLACK,
             )
@@ -760,6 +846,23 @@ class Program:
             label="Current Sequence",
             limits=[self.Sequence.Timestamps[0], self.Sequence.Timestamps[-1]],
             pivotColor=AI4Animation.Color.GREEN,
+        )
+        wolf_status = "Defeated" if self.EnemyWolfDefeated else f"{self.EnemyWolfHealth}/{WOLF_MAX_HEALTH}"
+        AI4Animation.Draw.Text(
+            "Wolf Enemy: " + wolf_status,
+            0.8,
+            0.60,
+            0.022,
+            AI4Animation.Color.RED,
+        )
+        AI4Animation.GUI.HorizontalBar(
+            0.8,
+            0.615,
+            0.15,
+            0.025,
+            self.EnemyWolfHealth,
+            label="Wolf Health",
+            limits=[0, WOLF_MAX_HEALTH],
         )
         AI4Animation.GUI.HorizontalBar(
             0.8,

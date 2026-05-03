@@ -167,6 +167,13 @@ def IsJumpPressed():
         return True
     return rl.IsKeyPressed(rl.KEY_SPACE)
 
+def IsFightPressed():
+    if GamepadAvailable() and pr.is_gamepad_button_pressed(
+        CONTROLLER_ID, pr.GamepadButton.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT
+    ):
+        return True
+    return rl.IsKeyPressed(rl.KEY_G)
+
 def GetCurrentKey():
     key = rl.GetCharPressed()
     return chr(key) if (key >= 32) and (key <= 125) else None
