@@ -59,6 +59,11 @@ FIGHT_LUNGE_SPEED = 1.25
 FIGHT_RANGE = 2.85
 FIGHT_DAMAGE = 1
 WOLF_MAX_HEALTH = 3
+WOLF_HIT_REACTION_DURATION = 0.45
+WOLF_COUNTER_DURATION = 0.65
+WOLF_COUNTER_DAMAGE_TIME = 0.32
+WOLF_KNOCKBACK_DISTANCE = 0.42
+DOG_MAX_HEALTH = 3
 
 LOCOMOTION_MODES = {
     "walk": 0.7,
@@ -112,6 +117,14 @@ class Program:
         actor.SetRoot(root)
         actor.SetPositions(actor.GetPositions() + offset)
         actor.SyncToScene()
+
+    def RootFacing(self, position, direction, fallback):
+        direction = np.array(direction, copy=True)
+        direction[1] = 0.0
+        if Vector3.Length(direction) == 0.0:
+            direction = np.array(fallback, copy=True)
+            direction[1] = 0.0
+        return Transform.TR(position, Rotation.LookPlanar(direction))
 
     def SyncInactiveActors(self):
         for name, actor in self.Actors.items():
@@ -230,6 +243,14 @@ class Program:
         self.EnemyWolf = self.Actors["wolf"]
         self.EnemyWolfHealth = WOLF_MAX_HEALTH
         self.EnemyWolfDefeated = False
+        self.WolfHitTimer = 0.0
+        self.WolfCounterTimer = 0.0
+        self.WolfCounterResolved = True
+        self.WolfCounterStartPosition = None
+        self.WolfCounterStrikePosition = None
+        self.WolfCounterHomePosition = None
+        self.DogHealth = DOG_MAX_HEALTH
+        self.CombatMessage = "Circle/G: Fight"
         self.SpawnEnemyWolf()
 
         AI4Animation.Standalone.IO.LogErrorIfGamepadNotAvailable()
@@ -252,33 +273,112 @@ class Program:
         position = self.EnemyWolf.GetRootPosition()
         x = float(position[0])
         z = float(position[2])
+        hit_flash = self.WolfHitTimer > 0.0
         rl.DrawCube(
             pr.Vector3(x, 0.035, z),
             0.55,
             0.05,
             0.55,
-            pr.Color(170, 22, 30, 110),
+            pr.Color(220, 38, 46, 150) if hit_flash else pr.Color(170, 22, 30, 110),
         )
         rl.DrawSphere(
             pr.Vector3(x, 1.75, z),
-            0.055,
+            0.09 if hit_flash else 0.055,
             pr.Color(220, 36, 44, 255),
         )
 
     def TryFightWolf(self):
         self.FightTimer = FIGHT_ACTION_DURATION
         if self.EnemyWolfDefeated:
+            self.CombatMessage = "Wolf is down"
             return
         distance = Vector3.Distance(
             self.Actor.GetRootPosition(),
             self.EnemyWolf.GetRootPosition(),
         )
         if distance > FIGHT_RANGE:
+            self.CombatMessage = "Get closer"
             return
+
         self.EnemyWolfHealth = max(0, self.EnemyWolfHealth - FIGHT_DAMAGE)
+        self.ApplyWolfHitReaction()
         if self.EnemyWolfHealth == 0:
             self.EnemyWolfDefeated = True
-            self.EnemyWolf.SkinnedMesh.Unregister()
+            self.WolfCounterTimer = 0.0
+            self.CombatMessage = "Wolf defeated"
+        else:
+            self.StartWolfCounter()
+            self.CombatMessage = "Hit! Wolf counters"
+
+    def ApplyWolfHitReaction(self):
+        self.WolfHitTimer = WOLF_HIT_REACTION_DURATION
+        direction = self.EnemyWolf.GetRootPosition() - self.Actor.GetRootPosition()
+        direction[1] = 0.0
+        if Vector3.Length(direction) == 0.0:
+            direction = -self.Actor.GetRootDirection()
+        direction = Vector3.Normalize(direction)
+        self.PlaceEnemyWolf(
+            self.EnemyWolf.GetRootPosition() + direction * WOLF_KNOCKBACK_DISTANCE,
+            -direction,
+        )
+
+    def StartWolfCounter(self):
+        direction = self.Actor.GetRootPosition() - self.EnemyWolf.GetRootPosition()
+        direction[1] = 0.0
+        if Vector3.Length(direction) == 0.0:
+            direction = self.EnemyWolf.GetRootDirection()
+        direction = Vector3.Normalize(direction)
+
+        self.WolfCounterTimer = WOLF_COUNTER_DURATION
+        self.WolfCounterResolved = False
+        self.WolfCounterStartPosition = np.array(self.EnemyWolf.GetRootPosition(), copy=True)
+        self.WolfCounterStrikePosition = self.WolfCounterStartPosition + direction * 0.55
+        self.WolfCounterHomePosition = self.WolfCounterStartPosition
+
+    def PlaceEnemyWolf(self, position, facing_direction):
+        self.PlaceActorAtRoot(
+            self.EnemyWolf,
+            self.RootFacing(
+                position,
+                facing_direction,
+                self.EnemyWolf.GetRootDirection(),
+            ),
+        )
+
+    def UpdateWolfCombat(self):
+        self.WolfHitTimer = max(0.0, self.WolfHitTimer - Time.DeltaTime)
+        if self.WolfCounterTimer <= 0.0 or self.EnemyWolfDefeated:
+            return
+
+        elapsed = WOLF_COUNTER_DURATION - self.WolfCounterTimer
+        progress = max(0.0, min(1.0, elapsed / WOLF_COUNTER_DURATION))
+        if progress < 0.5:
+            blend = progress / 0.5
+            position = Vector3.Lerp(
+                self.WolfCounterStartPosition,
+                self.WolfCounterStrikePosition,
+                blend,
+            )
+        else:
+            blend = (progress - 0.5) / 0.5
+            position = Vector3.Lerp(
+                self.WolfCounterStrikePosition,
+                self.WolfCounterHomePosition,
+                blend,
+            )
+
+        self.PlaceEnemyWolf(position, self.Actor.GetRootPosition() - position)
+        if (
+            not self.WolfCounterResolved
+            and elapsed >= WOLF_COUNTER_DAMAGE_TIME
+            and Vector3.Distance(self.Actor.GetRootPosition(), self.EnemyWolf.GetRootPosition())
+            <= FIGHT_RANGE
+        ):
+            self.DogHealth = max(0, self.DogHealth - 1)
+            self.WolfCounterResolved = True
+            self.CombatMessage = "Wolf hit back"
+
+        self.WolfCounterTimer = max(0.0, self.WolfCounterTimer - Time.DeltaTime)
 
     def DirectionToEnemyWolf(self):
         if self.EnemyWolfDefeated:
@@ -331,6 +431,7 @@ class Program:
     def Update(self):
         # Update control every frame
         self.Control()
+        self.UpdateWolfCombat()
 
         # Predict future sequence every few frames
         if (
@@ -849,11 +950,18 @@ class Program:
         )
         wolf_status = "Defeated" if self.EnemyWolfDefeated else f"{self.EnemyWolfHealth}/{WOLF_MAX_HEALTH}"
         AI4Animation.Draw.Text(
-            "Wolf Enemy: " + wolf_status,
+            f"Dog: {self.DogHealth}/{DOG_MAX_HEALTH}   Wolf: {wolf_status}",
             0.8,
             0.60,
             0.022,
             AI4Animation.Color.RED,
+        )
+        AI4Animation.Draw.Text(
+            self.CombatMessage,
+            0.8,
+            0.635,
+            0.018,
+            AI4Animation.Color.BLACK,
         )
         AI4Animation.GUI.HorizontalBar(
             0.8,
