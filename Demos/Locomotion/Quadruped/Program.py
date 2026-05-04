@@ -58,6 +58,8 @@ FIGHT_ACTION_DURATION = 0.55
 FIGHT_LUNGE_SPEED = 1.25
 FIGHT_RANGE = 2.85
 FIGHT_DAMAGE = 1
+FIGHT_INPUT_COOLDOWN = 0.42
+BITE_EFFECT_DURATION = 0.38
 WOLF_MAX_HEALTH = 3
 WOLF_HIT_REACTION_DURATION = 0.45
 WOLF_COUNTER_DURATION = 0.65
@@ -240,6 +242,9 @@ class Program:
         self.Timestamp = Time.TotalTime
         self.JumpTimer = 0.0
         self.FightTimer = 0.0
+        self.FightInputCooldown = 0.0
+        self.DogBiteTimer = 0.0
+        self.WolfBiteTimer = 0.0
         self.EnemyWolf = self.Actors["wolf"]
         self.EnemyWolfHealth = WOLF_MAX_HEALTH
         self.EnemyWolfDefeated = False
@@ -287,6 +292,57 @@ class Program:
             pr.Color(220, 36, 44, 255),
         )
 
+    def GetBitePosition(self, actor):
+        for bone_name in [Definitions.HeadSiteName, Definitions.HeadName]:
+            if actor.HasBone(bone_name):
+                return actor.GetPositions([bone_name])[0]
+        return actor.GetRootPosition() + actor.GetRootDirection() * 0.5 + Vector3.Y * 0.45
+
+    def DrawBiteEffect(self, attacker, defender, timer, color):
+        if timer <= 0.0:
+            return
+
+        start = self.GetBitePosition(attacker)
+        target = self.GetBitePosition(defender)
+        direction = target - start
+        if Vector3.Length(direction) == 0.0:
+            direction = attacker.GetRootDirection()
+        direction = Vector3.Normalize(direction)
+
+        pulse = max(0.0, min(1.0, timer / BITE_EFFECT_DURATION))
+        length = 0.35 + (1.0 - pulse) * 0.45
+        end = start + direction * length
+        side = Vector3.Cross(direction, Vector3.Y)
+        if Vector3.Length(side) == 0.0:
+            side = Vector3.UnitX()
+        side = Vector3.Normalize(side)
+
+        start_v = pr.Vector3(float(start[0]), float(start[1]), float(start[2]))
+        end_v = pr.Vector3(float(end[0]), float(end[1]), float(end[2]))
+        rl.DrawCylinderEx(start_v, end_v, 0.035, 0.012, 8, color)
+
+        for sign in [-1.0, 1.0]:
+            tooth = end + side * (0.07 * sign) + Vector3.Y * 0.035
+            rl.DrawSphere(
+                pr.Vector3(float(tooth[0]), float(tooth[1]), float(tooth[2])),
+                0.045,
+                pr.Color(246, 239, 215, 255),
+            )
+
+    def DrawCombatBites(self):
+        self.DrawBiteEffect(
+            self.Actor,
+            self.EnemyWolf,
+            self.DogBiteTimer,
+            pr.Color(235, 52, 35, 245),
+        )
+        self.DrawBiteEffect(
+            self.EnemyWolf,
+            self.Actor,
+            self.WolfBiteTimer,
+            pr.Color(130, 8, 16, 245),
+        )
+
     def TryFightWolf(self):
         self.FightTimer = FIGHT_ACTION_DURATION
         if self.EnemyWolfDefeated:
@@ -300,6 +356,7 @@ class Program:
             self.CombatMessage = "Get closer"
             return
 
+        self.DogBiteTimer = BITE_EFFECT_DURATION
         self.EnemyWolfHealth = max(0, self.EnemyWolfHealth - FIGHT_DAMAGE)
         self.ApplyWolfHitReaction()
         if self.EnemyWolfHealth == 0:
@@ -334,6 +391,7 @@ class Program:
         self.WolfCounterStartPosition = np.array(self.EnemyWolf.GetRootPosition(), copy=True)
         self.WolfCounterStrikePosition = self.WolfCounterStartPosition + direction * 0.55
         self.WolfCounterHomePosition = self.WolfCounterStartPosition
+        self.WolfBiteTimer = BITE_EFFECT_DURATION
 
     def PlaceEnemyWolf(self, position, facing_direction):
         self.PlaceActorAtRoot(
@@ -346,6 +404,8 @@ class Program:
         )
 
     def UpdateWolfCombat(self):
+        self.DogBiteTimer = max(0.0, self.DogBiteTimer - Time.DeltaTime)
+        self.WolfBiteTimer = max(0.0, self.WolfBiteTimer - Time.DeltaTime)
         self.WolfHitTimer = max(0.0, self.WolfHitTimer - Time.DeltaTime)
         if self.WolfCounterTimer <= 0.0 or self.EnemyWolfDefeated:
             return
@@ -495,8 +555,10 @@ class Program:
         jump_active = self.JumpTimer > 0.0
         self.JumpTimer = max(0.0, self.JumpTimer - Time.DeltaTime)
 
-        if fight_pressed:
+        self.FightInputCooldown = max(0.0, self.FightInputCooldown - Time.DeltaTime)
+        if fight_pressed and self.FightInputCooldown == 0.0:
             self.TryFightWolf()
+            self.FightInputCooldown = FIGHT_INPUT_COOLDOWN
         fight_active = self.FightTimer > 0.0
         self.FightTimer = max(0.0, self.FightTimer - Time.DeltaTime)
 
@@ -844,6 +906,7 @@ class Program:
     def Draw(self):
         self.SimulationObject.Draw()
         self.DrawEnemyWolfMarker()
+        self.DrawCombatBites()
 
         if self.DrawRootControl.Active:
             self.RootControl.Draw()

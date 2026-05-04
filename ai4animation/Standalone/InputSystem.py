@@ -168,11 +168,16 @@ def IsJumpPressed():
     return rl.IsKeyPressed(rl.KEY_SPACE)
 
 def IsFightPressed():
-    if GamepadAvailable() and pr.is_gamepad_button_pressed(
-        CONTROLLER_ID, pr.GamepadButton.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT
-    ):
-        return True
-    return rl.IsKeyPressed(rl.KEY_G)
+    if GamepadAvailable():
+        fight_buttons = [
+            pr.GamepadButton.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT,
+        ]
+        for button in fight_buttons:
+            if pr.is_gamepad_button_pressed(
+                CONTROLLER_ID, button
+            ) or pr.is_gamepad_button_down(CONTROLLER_ID, button):
+                return True
+    return rl.IsKeyPressed(rl.KEY_G) or rl.IsKeyDown(rl.KEY_G)
 
 def GetCurrentKey():
     key = rl.GetCharPressed()
